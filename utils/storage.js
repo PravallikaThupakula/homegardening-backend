@@ -1,23 +1,20 @@
-import { uploadBuffer, getPublicUrl } from "../config/s3Client.js";
+import supabase from "../config/supabaseClient.js";
 
-const BUCKET = process.env.S3_BUCKET;
+export const uploadFile = async (bucket, fileName, buffer, contentType) => {
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(fileName, buffer, {
+      contentType,
+      upsert: true,
+    });
 
-/* ================= UPLOAD FILE TO S3 ================= */
-export const uploadFile = async (
-  fileName,
-  buffer,
-  contentType
-) => {
-  if (!BUCKET) {
-    throw new Error("S3_BUCKET not configured");
+  if (error) {
+    throw new Error(error.message);
   }
 
-  await uploadBuffer(
-    BUCKET,
-    fileName,
-    buffer,
-    contentType
-  );
+  const { data } = supabase.storage
+    .from(bucket)
+    .getPublicUrl(fileName);
 
-  return getPublicUrl(BUCKET, fileName);
+  return data.publicUrl;
 };
