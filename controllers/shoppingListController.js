@@ -1,7 +1,7 @@
-const supabase = require("../config/supabaseClient");
+import supabase from "../config/supabaseClient.js";
 
-// Get user's shopping list
-exports.getShoppingList = async (req, res) => {
+/* ================= GET SHOPPING LIST ================= */
+export const getShoppingList = async (req, res) => {
   try {
     const userId = req.user.id;
 
@@ -11,19 +11,21 @@ exports.getShoppingList = async (req, res) => {
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error)
+      return res.status(400).json({ error: error.message });
 
     res.json(data);
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// Add item to shopping list
-exports.addShoppingItem = async (req, res) => {
+/* ================= ADD SHOPPING ITEM ================= */
+export const addShoppingItem = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { item_name, category, quantity, priority } = req.body;
+    const { item_name, category, quantity, priority } =
+      req.body;
 
     const { data, error } = await supabase
       .from("shopping_list")
@@ -40,20 +42,27 @@ exports.addShoppingItem = async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error)
+      return res.status(400).json({ error: error.message });
 
     res.status(201).json(data);
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// Update shopping list item
-exports.updateShoppingItem = async (req, res) => {
+/* ================= UPDATE SHOPPING ITEM ================= */
+export const updateShoppingItem = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { item_name, category, quantity, priority, completed } = req.body;
+    const {
+      item_name,
+      category,
+      quantity,
+      priority,
+      completed,
+    } = req.body;
 
     const { data, error } = await supabase
       .from("shopping_list")
@@ -69,16 +78,17 @@ exports.updateShoppingItem = async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error)
+      return res.status(400).json({ error: error.message });
 
     res.json(data);
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// Delete shopping list item
-exports.deleteShoppingItem = async (req, res) => {
+/* ================= DELETE SHOPPING ITEM ================= */
+export const deleteShoppingItem = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -89,35 +99,49 @@ exports.deleteShoppingItem = async (req, res) => {
       .eq("id", id)
       .eq("user_id", userId);
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error)
+      return res.status(400).json({ error: error.message });
 
     res.json({ message: "Item deleted successfully" });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// Generate shopping list from user's plants
-exports.generateFromPlants = async (req, res) => {
+/* ================= GENERATE FROM PLANTS ================= */
+export const generateFromPlants = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Get user's plants
-    const { data: plants, error: plantsError } = await supabase
-      .from("user_garden")
-      .select("plant_type, watering_frequency")
-      .eq("user_id", userId);
+    const { data: plants, error: plantsError } =
+      await supabase
+        .from("user_garden")
+        .select("plant_type, watering_frequency")
+        .eq("user_id", userId);
 
-    if (plantsError) return res.status(400).json({ error: plantsError.message });
+    if (plantsError)
+      return res
+        .status(400)
+        .json({ error: plantsError.message });
 
-    // Generate suggested items based on plants
     const suggestedItems = [
-      { item_name: "Watering Can", category: "tools", priority: "high" },
-      { item_name: "Potting Soil", category: "supplies", priority: "high" },
-      { item_name: "Fertilizer", category: "supplies", priority: "medium" },
+      {
+        item_name: "Watering Can",
+        category: "tools",
+        priority: "high",
+      },
+      {
+        item_name: "Potting Soil",
+        category: "supplies",
+        priority: "high",
+      },
+      {
+        item_name: "Fertilizer",
+        category: "supplies",
+        priority: "medium",
+      },
     ];
 
-    // Add items if not already in list
     for (const item of suggestedItems) {
       const { data: existing } = await supabase
         .from("shopping_list")
@@ -125,7 +149,7 @@ exports.generateFromPlants = async (req, res) => {
         .eq("user_id", userId)
         .eq("item_name", item.item_name)
         .eq("completed", false)
-        .single();
+        .maybeSingle();
 
       if (!existing) {
         await supabase.from("shopping_list").insert([
@@ -139,8 +163,10 @@ exports.generateFromPlants = async (req, res) => {
       }
     }
 
-    res.json({ message: "Shopping list generated successfully" });
-  } catch (error) {
+    res.json({
+      message: "Shopping list generated successfully",
+    });
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 };

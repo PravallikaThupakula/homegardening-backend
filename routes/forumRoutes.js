@@ -1,23 +1,31 @@
-const express = require("express");
-const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const {
+import express from "express";
+import authMiddleware from "../middleware/authMiddleware.js";
+
+import {
   getAllPosts,
   createPost,
   getPostById,
   addComment,
   toggleLike,
   searchPosts,
-} = require("../controllers/forumController");
-const { suggestAnswer, suggestTags } = require("../controllers/forumAiController");
+} from "../controllers/forumController.js";
+
+import {
+  suggestAnswer,
+  suggestTags,
+} from "../controllers/forumAiController.js";
+
+const router = express.Router();
 
 router.get("/", getAllPosts);
 router.get("/search", searchPosts);
+
 router.post("/ai/suggest-answer", authMiddleware, suggestAnswer);
 router.post("/ai/suggest-tags", authMiddleware, suggestTags);
+
 router.get("/:id", getPostById);
 router.post("/", authMiddleware, createPost);
 router.post("/:postId/comments", authMiddleware, addComment);
 router.post("/:postId/like", authMiddleware, toggleLike);
 
-module.exports = router;
+export default router;

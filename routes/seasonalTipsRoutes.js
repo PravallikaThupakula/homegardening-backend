@@ -1,13 +1,19 @@
-const express = require("express");
-const router = express.Router();
-const {
+import express from "express";
+
+import {
   getSeasonalTips,
   getTipById,
   getSeasonalTipsByPlace,
-} = require("../controllers/seasonalTipsController");
+} from "../controllers/seasonalTipsController.js";
+
+const router = express.Router();
+
+/* ================= SEASONAL TIPS ROUTES ================= */
 
 router.get("/", getSeasonalTips);
+
 router.get("/by-place", getSeasonalTipsByPlace);
+
 router.get("/:id", getTipById);
 
-module.exports = router;
+export default router;

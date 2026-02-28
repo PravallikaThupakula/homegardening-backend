@@ -1,17 +1,24 @@
-const express = require("express");
-const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const multer = require("multer");
-const { addXP, updateStreak } = require("../utils/xpHelpers");
-const supabase = require('../config/supabaseClient');
-const { scanPlantImage } = require("../controllers/plantScanController");
+import express from "express";
+import multer from "multer";
 
+import authMiddleware from "../middleware/authMiddleware.js";
+import { addXP, updateStreak } from "../utils/xpHelpers.js";
+import supabase from "../config/supabaseClient.js";
+import { scanPlantImage } from "../controllers/plantScanController.js";
+import { uploadFile } from "../utils/storage.js";
+
+const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// GET all plants
+/* ================= GET ALL PLANTS ================= */
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const { data, error } = await supabase.from('gardenitems').select('*').eq('user_id', req.user.id).order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from("gardenitems")
+      .select("*")
+      .eq("user_id", req.user.id)
+      .order("created_at", { ascending: false });
+
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   } catch (err) {
@@ -19,34 +26,39 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-// ADD plant (JSON body – no image) – use this when frontend sends name only
+/* ================= ADD PLANT (JSON ONLY) ================= */
 router.post("/add", authMiddleware, async (req, res) => {
   try {
     const { plant_name, watering_frequency } = req.body;
-    const name = (plant_name || "").toString().trim();
-    if (!name) return res.status(400).json({ error: "plant_name is required" });
+    const name = (plant_name || "").trim();
 
-    const { data, error } = await supabase.from('gardenitems').insert([
-      {
-        user_id: req.user.id,
-        growth_notes: name,
-        watering_frequency: Number(watering_frequency) || 2,
-      }
-    ]).select('*');
+    if (!name)
+      return res.status(400).json({ error: "plant_name is required" });
+
+    const { data, error } = await supabase
+      .from("gardenitems")
+      .insert([
+        {
+          user_id: req.user.id,
+          growth_notes: name,
+          watering_frequency: Number(watering_frequency) || 2,
+        },
+      ])
+      .select("*");
+
     if (error) throw error;
+
     await addXP(supabase, req.user.id, 10);
-    res.json({ message: "Plant added", data: data && data[0] });
-  } catch (err) {
+
+    res.json({ message: "Plant added", data: data?.[0] });
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ADD plant with required image (multipart) — scan image for health status
-router.post(
-  "/",
-  authMiddleware,
-  upload.single("image"),
-  async (req, res) => {
+/* ================= ADD PLANT WITH IMAGE ================= */
+router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
+  try {
     const {
       plant_name,
       watering_frequency,
@@ -54,29 +66,29 @@ router.post(
       sunlight_requirement,
       soil_type,
       planting_date,
-      notes
+      notes,
     } = req.body;
 
-    const name = (plant_name || "").toString().trim();
-    if (!name) return res.status(400).json({ error: "plant_name is required" });
-    if (!req.file) return res.status(400).json({ error: "Plant image is required" });
+    const name = (plant_name || "").trim();
+    if (!name)
+      return res.status(400).json({ error: "plant_name is required" });
+
+    if (!req.file)
+      return res.status(400).json({ error: "Plant image is required" });
 
     const fileName = `${Date.now()}-${req.file.originalname}`;
-    const { uploadFile } = require("../utils/storage");
-    let imageUrl;
-    try {
-      imageUrl = await uploadFile(fileName, req.file.buffer, req.file.mimetype);
-    } catch (e) {
-      console.error('S3 upload error:', e.message);
-      return res.status(500).json({ error: 'Image upload failed' });
-    }
+    const imageUrl = await uploadFile(
+      fileName,
+      req.file.buffer,
+      req.file.mimetype
+    );
 
     let health_status = null;
     try {
       const scan = await scanPlantImage(imageUrl);
       health_status = scan.status;
     } catch (e) {
-      console.error("Scan on add failed:", e.message);
+      console.error("Scan failed:", e.message);
     }
 
     const insert = {
@@ -87,107 +99,129 @@ router.post(
       plant_type: plant_type || null,
       sunlight_requirement: sunlight_requirement || null,
       soil_type: soil_type || null,
-      planting_date: planting_date ? new Date(planting_date).toISOString() : new Date().toISOString(),
+      planting_date: planting_date
+        ? new Date(planting_date).toISOString()
+        : new Date().toISOString(),
       notes: notes || null,
-      health_status: health_status || null,
+      health_status,
     };
-    const { data, error } = await supabase.from('gardenitems').insert([insert]).select('*');
+
+    const { data, error } = await supabase
+      .from("gardenitems")
+      .insert([insert])
+      .select("*");
+
     if (error) throw error;
+
     await addXP(supabase, req.user.id, 10);
-    res.json({ message: "Plant added", data: data && data[0] });
-  }
-);
 
-// Re-scan plant: upload new image, run AI scan, update health_status; +10 XP if good (must be before PUT /:id)
+    res.json({ message: "Plant added", data: data?.[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* ================= RESCAN PLANT ================= */
 router.put("/:id/rescan", authMiddleware, upload.single("image"), async (req, res) => {
-  const { id } = req.params;
-  if (!req.file) return res.status(400).json({ error: "Image is required to re-scan" });
-
-  const fileName = `${Date.now()}-${req.file.originalname}`;
-  const { uploadFile } = require("../utils/storage");
-  let imageUrl;
   try {
-    imageUrl = await uploadFile(fileName, req.file.buffer, req.file.mimetype);
-  } catch (e) {
-    console.error('S3 upload error:', e.message);
-    return res.status(500).json({ error: 'Image upload failed' });
-  }
+    const { id } = req.params;
 
-  let health_status = "Needs Care";
-  let isGood = false;
-  try {
-    const scan = await scanPlantImage(imageUrl);
-    health_status = scan.status;
-    isGood = scan.isGood;
-  } catch (e) {
-    console.error("Rescan failed:", e.message);
-  }
+    if (!req.file)
+      return res.status(400).json({ error: "Image is required to re-scan" });
 
-  const { data: updatedArr, error: upErr } = await supabase.from('gardenitems').update({ image_url: imageUrl, health_status }).eq('id', id).eq('user_id', req.user.id).select('*');
-  if (upErr) return res.status(500).json({ error: upErr.message });
-  const updated = updatedArr && updatedArr[0];
-  if (!updated) return res.status(404).json({ error: 'Plant not found' });
-  if (isGood) await addXP(supabase, req.user.id, 10);
-  res.json({ message: "Plant re-scanned", data: updated, growth_points: isGood ? 10 : 0 });
+    const fileName = `${Date.now()}-${req.file.originalname}`;
+    const imageUrl = await uploadFile(
+      fileName,
+      req.file.buffer,
+      req.file.mimetype
+    );
+
+    let health_status = "Needs Care";
+    let isGood = false;
+
+    try {
+      const scan = await scanPlantImage(imageUrl);
+      health_status = scan.status;
+      isGood = scan.isGood;
+    } catch (e) {
+      console.error("Rescan failed:", e.message);
+    }
+
+    const { data, error } = await supabase
+      .from("gardenitems")
+      .update({ image_url: imageUrl, health_status })
+      .eq("id", id)
+      .eq("user_id", req.user.id)
+      .select("*");
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    if (!data?.length)
+      return res.status(404).json({ error: "Plant not found" });
+
+    if (isGood) await addXP(supabase, req.user.id, 10);
+
+    res.json({
+      message: "Plant re-scanned",
+      data: data[0],
+      growth_points: isGood ? 10 : 0,
+    });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-// UPDATE plant (name, watering, etc. — no image)
-router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
-  const { id } = req.params;
-  const {
-    plant_name,
-    watering_frequency,
-    plant_type,
-    sunlight_requirement,
-    soil_type,
-    notes
-  } = req.body;
-
-  const updateData = {
-    growth_notes: plant_name,
-    watering_frequency,
-    plant_type,
-    sunlight_requirement,
-    soil_type,
-    notes,
-  };
-  Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
-
-  const { data: updatedArr, error: upErr } = await supabase.from('gardenitems').update(updateData).eq('id', id).eq('user_id', req.user.id).select('*');
-  if (upErr) return res.status(500).json({ error: upErr.message });
-  const updated = updatedArr && updatedArr[0];
-  if (!updated) return res.status(404).json({ error: 'Plant not found' });
-  res.json({ message: "Plant updated", data: updated });
-});
-
-// WATER plant (logs to watering_logs, +5 XP, streak update)
+/* ================= WATER PLANT ================= */
 router.put("/water/:id", authMiddleware, async (req, res) => {
-  const { id } = req.params;
-  const now = new Date().toISOString();
+  try {
+    const { id } = req.params;
+    const now = new Date().toISOString();
 
-  const { data: updatedArr, error: upErr } = await supabase.from('gardenitems').update({ last_watered: new Date(now).toISOString() }).eq('id', id).eq('user_id', req.user.id).select('*');
-  if (upErr) return res.status(500).json({ error: upErr.message });
-  const updated = updatedArr && updatedArr[0];
-  if (!updated) return res.status(404).json({ error: 'Plant not found' });
+    const { data, error } = await supabase
+      .from("gardenitems")
+      .update({ last_watered: now })
+      .eq("id", id)
+      .eq("user_id", req.user.id)
+      .select("*");
 
-  const { error: logErr } = await supabase.from('watering_logs').insert([
-    { user_id: req.user.id, plant_id: id, watered_at: now }
-  ]);
-  if (logErr) console.error('watering log error', logErr.message);
-  await addXP(supabase, req.user.id, 5);
-  await updateStreak(supabase, req.user.id);
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data?.length)
+      return res.status(404).json({ error: "Plant not found" });
 
-  res.json({ message: "Plant watered", data: updated });
+    await supabase.from("watering_logs").insert([
+      { user_id: req.user.id, plant_id: id, watered_at: now },
+    ]);
+
+    await addXP(supabase, req.user.id, 5);
+    await updateStreak(supabase, req.user.id);
+
+    res.json({ message: "Plant watered", data: data[0] });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-// DELETE plant
+/* ================= DELETE PLANT ================= */
 router.delete("/:id", authMiddleware, async (req, res) => {
-  const { id } = req.params;
+  try {
+    const { id } = req.params;
 
-  const { data, error } = await supabase.from('gardenitems').delete().eq('id', id).eq('user_id', req.user.id).select('*');
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data || !data.length) return res.status(404).json({ error: 'Plant not found' });
-  res.json({ message: "Plant deleted" });
+    const { data, error } = await supabase
+      .from("gardenitems")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", req.user.id)
+      .select("*");
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data?.length)
+      return res.status(404).json({ error: "Plant not found" });
+
+    res.json({ message: "Plant deleted" });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-module.exports = router;
+export default router;

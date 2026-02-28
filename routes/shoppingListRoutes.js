@@ -1,18 +1,27 @@
-const express = require("express");
-const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const {
+import express from "express";
+
+import authMiddleware from "../middleware/authMiddleware.js";
+
+import {
   getShoppingList,
   addShoppingItem,
   updateShoppingItem,
   deleteShoppingItem,
   generateFromPlants,
-} = require("../controllers/shoppingListController");
+} from "../controllers/shoppingListController.js";
+
+const router = express.Router();
+
+/* ================= SHOPPING LIST ROUTES ================= */
 
 router.get("/", authMiddleware, getShoppingList);
+
 router.post("/", authMiddleware, addShoppingItem);
+
 router.post("/generate", authMiddleware, generateFromPlants);
+
 router.put("/:id", authMiddleware, updateShoppingItem);
+
 router.delete("/:id", authMiddleware, deleteShoppingItem);
 
-module.exports = router;
+export default router;

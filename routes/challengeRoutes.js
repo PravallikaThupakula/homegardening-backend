@@ -1,7 +1,6 @@
-const express = require("express");
-const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const {
+import express from "express";
+import authMiddleware from "../middleware/authMiddleware.js";
+import {
   getAllChallenges,
   getChallengeById,
   joinChallenge,
@@ -9,7 +8,9 @@ const {
   getLeaderboard,
   getUserChallenges,
   shareProgress,
-} = require("../controllers/challengeController");
+} from "../controllers/challengeController.js";
+
+const router = express.Router();
 
 router.get("/", getAllChallenges);
 router.get("/leaderboard", getLeaderboard);
@@ -19,4 +20,4 @@ router.get("/:id", getChallengeById);
 router.post("/:challengeId/join", authMiddleware, joinChallenge);
 router.put("/:challengeId/progress", authMiddleware, updateChallengeProgress);
 
-module.exports = router;
+export default router;

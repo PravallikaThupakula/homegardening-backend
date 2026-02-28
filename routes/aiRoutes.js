@@ -1,14 +1,15 @@
-const express = require("express");
-const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const {
+import express from "express";
+import authMiddleware from "../middleware/authMiddleware.js";
+import {
   getAISuggestions,
   getPlantCareTips,
-} = require("../controllers/aiController");
-const { getPestAdvice } = require("../controllers/pestAdviceController");
+} from "../controllers/aiController.js";
+import { getPestAdvice } from "../controllers/pestAdviceController.js";
+
+const router = express.Router();
 
 router.get("/suggestions", authMiddleware, getAISuggestions);
 router.get("/plant/:plantId/tips", authMiddleware, getPlantCareTips);
 router.post("/pest-advice", authMiddleware, getPestAdvice);
 
-module.exports = router;
+export default router;
